@@ -54,8 +54,8 @@ jobs:
       - name: Tag the release
         if: steps.version.outputs.publish == 'true'
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "$(git log -1 --pretty=format:'%an')"
+          git config user.email "$(git log -1 --pretty=format:'%ae')"
           git tag -a "v${{ steps.version.outputs.number }}" -m "txray ${{ steps.version.outputs.number }}"
           git push origin "v${{ steps.version.outputs.number }}"
 
