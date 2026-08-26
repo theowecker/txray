@@ -1,3 +1,5 @@
+[![GitHub version](https://badge.fury.io/gh/theowecker%2Ftxray.svg)](https://badge.fury.io/gh/theowecker%2Ftxray)
+[![Gem Version](https://badge.fury.io/rb/txray.svg)](https://badge.fury.io/rb/txray)
 # txray
 
 Static analysis that finds slow work hidden inside database transactions, plus a runtime guard and a live terminal monitor for what static analysis cannot see.
