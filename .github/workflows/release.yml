@@ -29,7 +29,7 @@ jobs:
         run: |
           version="$(ruby -Ilib -r txray/version -e 'print Txray::VERSION')"
           echo "number=${version}" >> "$GITHUB_OUTPUT"
-          if git rev-parse "v${version}" >/dev/null 2>&1; then
+          if git rev-parse -q --verify "refs/tags/v${version}" >/dev/null; then
             echo "txray ${version} is already tagged, nothing to release"
             echo "publish=false" >> "$GITHUB_OUTPUT"
           else
@@ -41,8 +41,8 @@ jobs:
         if: steps.version.outputs.publish == 'true'
         run: |
           awk -v v="## ${{ steps.version.outputs.number }}" \
-            '$0 == v {flag=1; next} /^## / {flag=0} flag' CHANGELOG.md > notes.md
-          if [ ! -s notes.md ]; then
+            '$0 == v {flag=1; next} /^## / {flag=0} flag' CHANGELOG.md > "${RUNNER_TEMP}/notes.md"
+          if [ ! -s "${RUNNER_TEMP}/notes.md" ]; then
             echo "CHANGELOG.md has no section for ${{ steps.version.outputs.number }}" >&2
             exit 1
           fi
@@ -57,11 +57,14 @@ jobs:
           git config user.name "$(git log -1 --pretty=format:'%an')"
           git config user.email "$(git log -1 --pretty=format:'%ae')"
           git tag -a "v${{ steps.version.outputs.number }}" -m "txray ${{ steps.version.outputs.number }}"
-          git push origin "v${{ steps.version.outputs.number }}"
 
       - name: Publish to rubygems.org
         if: steps.version.outputs.publish == 'true'
         uses: rubygems/release-gem@v1
+
+      - name: Push the tag once the gem is published
+        if: steps.version.outputs.publish == 'true'
+        run: git push origin "v${{ steps.version.outputs.number }}"
 
       - name: Publish the GitHub release
         if: steps.version.outputs.publish == 'true'
@@ -70,4 +73,4 @@ jobs:
         run: |
           gh release create "v${{ steps.version.outputs.number }}" \
             --title "v${{ steps.version.outputs.number }}" \
-            --notes-file notes.md pkg/*.gem
+            --notes-file "${RUNNER_TEMP}/notes.md" pkg/*.gem

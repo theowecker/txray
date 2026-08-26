@@ -40,4 +40,4 @@ Merging a version bump releases the gem. There is nothing to run by hand.
 
 On every push to `main` the release workflow reads `Txray::VERSION` and stops immediately if that version is already tagged, so ordinary merges do nothing. When the version is new it takes the release notes from the matching changelog section, runs the suite, tags the commit, publishes the gem to RubyGems through trusted publishing, and creates the GitHub release with the notes and the built gem attached.
 
-Nothing is published if any of that fails, and a missing changelog section fails before the suite even runs. No API key is involved anywhere.
+The tag is created locally and only pushed once the gem is published, so a failure leaves nothing behind: fix it and merge again. A missing changelog section fails before the suite even runs. No API key is involved anywhere.
