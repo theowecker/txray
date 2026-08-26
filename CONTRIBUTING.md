@@ -33,19 +33,11 @@ Run the scanner against a real application, not only the suite. False positives 
 
 ## Releasing
 
-Releases are published by GitHub Actions through RubyGems trusted publishing, so no API key is needed and none is stored anywhere.
+Merging a version bump releases the gem. There is nothing to run by hand.
 
-`main` requires a pull request, so the version bump goes through one and only the tag is pushed directly.
-
-1. On a branch, bump `Txray::VERSION` in `lib/txray/version.rb` and add a `## x.y.z` section to `CHANGELOG.md`. The release notes are taken from that section verbatim, so a missing one fails the build.
+1. On a branch, bump `Txray::VERSION` in `lib/txray/version.rb` and add a `## x.y.z` section to `CHANGELOG.md`.
 2. Open the pull request and merge it once CI is green.
-3. Tag the merged commit:
 
-   ```sh
-   git checkout main
-   git pull
-   git tag -a vx.y.z -m "txray x.y.z"
-   git push origin vx.y.z
-   ```
+On every push to `main` the release workflow reads `Txray::VERSION` and stops immediately if that version is already tagged, so ordinary merges do nothing. When the version is new it takes the release notes from the matching changelog section, runs the suite, tags the commit, publishes the gem to RubyGems through trusted publishing, and creates the GitHub release with the notes and the built gem attached.
 
-Pushing the tag is what triggers the release. The workflow checks the tag against `Txray::VERSION`, runs the suite, publishes the gem, and creates the GitHub release with the notes and the built gem attached. Nothing is published if any step fails, so a tag that does not match the version constant costs nothing but a deleted tag.
+The tag is created locally and only pushed once the gem is published, so a failure leaves nothing behind: fix it and merge again. A missing changelog section fails before the suite even runs. No API key is involved anywhere.
