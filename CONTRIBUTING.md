@@ -30,3 +30,18 @@ CI runs 7.1, 7.2 and 8.0 alongside Ruby 3.2, 3.3 and 3.4.
 ## Before opening a pull request
 
 Run the scanner against a real application, not only the suite. False positives are the failure mode that matters, and they show up in real code long before they show up in fixtures.
+
+## Releasing
+
+Releases are published by GitHub Actions through RubyGems trusted publishing, so no API key is needed and none is stored anywhere.
+
+1. Bump `Txray::VERSION` in `lib/txray/version.rb`.
+2. Add a `## x.y.z` section to `CHANGELOG.md`. The release notes are taken from it verbatim, so a missing section fails the build.
+3. Commit, then tag and push:
+
+   ```sh
+   git tag -a vx.y.z -m "txray x.y.z"
+   git push origin main --tags
+   ```
+
+The workflow checks that the tag matches `Txray::VERSION`, runs the suite, publishes the gem, and creates the GitHub release with the notes and the built gem attached. Nothing is published if any step fails.

@@ -1,0 +1,48 @@
+name: release
+
+on:
+  push:
+    tags: [ "v*" ]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write # create the GitHub release
+      id-token: write # exchange an OIDC token with rubygems.org
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+
+      - name: Check the tag against the gem version
+        run: |
+          tagged="${GITHUB_REF_NAME#v}"
+          declared="$(ruby -Ilib -r txray/version -e 'print Txray::VERSION')"
+          if [ "$tagged" != "$declared" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match Txray::VERSION ${declared}" >&2
+            exit 1
+          fi
+
+      - name: Run the suite before publishing anything
+        run: bundle exec rake
+
+      - name: Publish to rubygems.org
+        uses: rubygems/release-gem@v1
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="## ${version}" '$0 == v {flag=1; next} /^## / {flag=0} flag' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "no CHANGELOG.md section found for ${version}" >&2
+            exit 1
+          fi
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes-file notes.md pkg/*.gem

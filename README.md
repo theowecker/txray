@@ -350,6 +350,8 @@ bin/setup
 bundle exec rake
 ```
 
+Releases are cut by tagging; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
 MIT
