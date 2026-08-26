@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 module Txray
-  MethodEntry = Struct.new(:namespace, :name, :node, :source, keyword_init: true) do
-    def label = "#{namespace}##{name}"
+  MethodEntry = Struct.new(:namespace, :name, :node, :source, :singleton, keyword_init: true) do
+    def label = "#{namespace}#{singleton ? "." : "#"}#{name}"
     def line = node.location.start_line
     def path = source.path
   end
@@ -38,8 +38,10 @@ module Txray
     private
 
     def add_method(namespace, node, source)
-      table = node.receiver ? @singleton : @instance
-      entry = MethodEntry.new(namespace: namespace, name: node.name.to_sym, node: node, source: source)
+      singleton = !node.receiver.nil?
+      table = singleton ? @singleton : @instance
+      entry = MethodEntry.new(namespace: namespace, name: node.name.to_sym, node: node, source: source,
+                              singleton: singleton)
       (table[namespace] ||= {})[entry.name] ||= entry
     end
 

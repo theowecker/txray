@@ -19,8 +19,12 @@ module Txray
       sources.each { |source| index.index(source) }
       analyzer = Analyzer.new(index: index, config: @config)
 
-      offenses = sources.flat_map { |source| analyzer.call(source) }.sort_by(&:sort_key)
-      Result.new(offenses: offenses, files: sources.map(&:path))
+      offenses = sources.flat_map { |source| analyzer.call(source) }
+      Result.new(offenses: dedupe(offenses).sort_by(&:sort_key), files: sources.map(&:path))
+    end
+
+    def dedupe(offenses)
+      offenses.group_by(&:key).values.map { |group| group.min_by { |offense| offense.trace.size } }
     end
 
     def files

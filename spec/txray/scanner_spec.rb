@@ -27,6 +27,28 @@ RSpec.describe Txray::Scanner do
     end
   end
 
+  it "reports a call reached from two transactions once" do
+    Dir.mktmpdir do |dir|
+      File.write(File.join(dir, "composer.rb"), <<~RUBY)
+        class Composer
+          def replace!
+            Workout.transaction { persist }
+          end
+
+          def persist
+            @workout.transaction do
+              specs.each { |spec| Step.create!(spec) }
+            end
+          end
+        end
+      RUBY
+
+      offenses = described_class.new(Txray::Config.new, paths: [ dir ]).run.offenses
+      expect(offenses.map(&:id)).to eq([ "iteration-in-transaction" ])
+      expect(offenses.first.trace).to be_empty
+    end
+  end
+
   it "skips excluded directories" do
     Dir.mktmpdir do |dir|
       FileUtils.mkdir_p(File.join(dir, "spec"))

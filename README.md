@@ -79,7 +79,9 @@ class Order < ApplicationRecord
 end
 ```
 
-txray resolves `after_create :settle` to `Order#settle`, follows `charge_card` into the same class and `notify_downstream` into the `Notifiable` concern in another file, and reports both calls with the path it took to reach them. `--depth` controls how far it follows (three levels by default).
+txray resolves `after_create :settle` to `Order#settle`, follows `charge_card` into the same class and `notify_downstream` into the `Notifiable` concern in another file, and reports both calls with the path it took to reach them.
+
+It follows four kinds of call: bare calls in the same class, `self.` calls into class methods, `Constant.method` calls into another class, and `Constant.new(...).method` into a service object. So a transaction that only says `Checkout.new(order).call` is still traced to the Stripe call three files away. `--depth` controls how far it follows (three levels by default).
 
 ## Configuration
 
