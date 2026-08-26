@@ -4,6 +4,7 @@ require_relative "reporters/text"
 require_relative "reporters/json"
 require_relative "reporters/sarif"
 require_relative "reporters/github"
+require_relative "reporters/live"
 
 module Txray
   module Reporters

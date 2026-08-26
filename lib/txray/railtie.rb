@@ -16,7 +16,9 @@ module Txray
           on_violation: settings["on_violation"],
           guard_http: settings["guard_http"],
           guard_jobs: settings["guard_jobs"],
-          guard_mail: settings["guard_mail"]
+          guard_mail: settings["guard_mail"],
+          log_path: settings["log_path"],
+          ignore: settings["ignore"]
         )
       end
     end

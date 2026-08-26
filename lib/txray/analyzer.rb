@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "set"
-
 module Txray
   class Analyzer
     def initialize(index:, clients:, config:)
@@ -40,9 +38,10 @@ module Txray
 
       rule_id = rule_for(node, namespace)
       return unless rule_id && @config.rule_enabled?(rule_id)
+      return if source.disabled?(node.location.start_line, rule_id)
 
       suppress_receivers(node, walk)
-      emit.call(Offense.new(rule: Rules[rule_id], path: source.path, line: node.location.start_line,
+      emit.call(Offense.new(rule: @config.rule(rule_id), path: source.path, line: node.location.start_line,
                             column: node.location.start_column + 1, snippet: NodeHelpers.snippet(node),
                             scope: walk.scope, trace: trace))
     end
@@ -67,7 +66,7 @@ module Txray
       end
     end
 
-    def follow(call, namespace, walk, depth, trace, &emit)
+    def follow(call, namespace, walk, depth, trace, &)
       return unless depth < @config.max_depth
 
       entry = resolve(call, namespace)
@@ -75,7 +74,7 @@ module Txray
       return unless walk.visited.add?([ entry.namespace, entry.name ])
 
       frame = Frame.new(label: entry.label, path: entry.path, line: entry.line)
-      explore(entry.node.body, entry.namespace, entry.source, walk, depth + 1, trace + [ frame ], &emit)
+      explore(entry.node.body, entry.namespace, entry.source, walk, depth + 1, trace + [ frame ], &)
     end
 
     def resolve(call, namespace)

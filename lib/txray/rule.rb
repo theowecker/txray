@@ -82,7 +82,8 @@ module Txray
       category: :transaction,
       severity: :medium,
       message: "Broadcast `%{snippet}` is pushed inside %{scope}",
-      remedy: "Rendering and pushing before the commit lets subscribers see rows that are not committed yet, or that roll back. Broadcast from after_commit."
+      remedy: "Rendering and pushing before the commit lets subscribers see rows that are not committed yet, " \
+              "or that roll back. Broadcast from after_commit."
     )
 
     register(

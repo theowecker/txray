@@ -18,6 +18,7 @@ module Txray
     def run(argv)
       paths = parser.parse(argv)
       return init_config if @options[:init]
+      return watch if paths.first == "watch"
 
       config = Config.load(@options[:config]).merge(
         "fail_level" => @options[:fail_level],
@@ -42,6 +43,17 @@ module Txray
       Result.new(offenses: result.offenses.select { |o| @options[:only].include?(o.id) }, files: result.files)
     end
 
+    def watch
+      runtime = Config.load(@options[:config]).runtime
+      WatchCommand.new(
+        path: @options[:file] || runtime["log_path"],
+        threshold_ms: (@options[:threshold] || runtime["threshold_ms"]).to_i,
+        io: @io,
+        from_start: @options[:from_start] == true
+      ).run
+      EXIT_CLEAN
+    end
+
     def init_config
       if File.exist?(Config::FILENAME)
         @io.puts "#{Config::FILENAME} already exists"
@@ -55,7 +67,7 @@ module Txray
 
     def parser
       OptionParser.new do |opts|
-        opts.banner = "Usage: txray [options] [paths]"
+        opts.banner = "Usage: txray [options] [paths]\n       txray watch [options]"
         opts.on("-f", "--format FORMAT", "text, json, sarif or github (default: text)") { |v| @options[:format] = v }
         opts.on("-c", "--config PATH", "path to a .txray.yml file") { |v| @options[:config] = v }
         opts.on("--fail-level LEVEL", "low, medium, high or none (default: low)") { |v| @options[:fail_level] = v }
@@ -64,6 +76,9 @@ module Txray
         opts.on("--depth N", Integer, "how far to follow method calls (default: 3)") { |v| @options[:max_depth] = v }
         opts.on("--rules", "list every rule and exit") { list_rules }
         opts.on("--init", "write a default .txray.yml") { @options[:init] = true }
+        opts.on("--file PATH", "watch: event log written by the runtime guard") { |v| @options[:file] = v }
+        opts.on("--threshold MS", Integer, "watch: slow transaction threshold") { |v| @options[:threshold] = v }
+        opts.on("--from-start", "watch: replay the existing log first") { @options[:from_start] = true }
         opts.on("-v", "--version", "print the version") { print_and_exit(VERSION) }
         opts.on("-h", "--help", "print this help") { print_and_exit(opts.to_s) }
       end

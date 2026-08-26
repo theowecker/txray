@@ -82,8 +82,15 @@ module Txray
 
     def delegation_target(call)
       hash = NodeHelpers.positional_arguments(call).grep(Prism::KeywordHashNode).first
-      pair = hash&.elements&.grep(Prism::AssocNode)&.find { |element| element.key.respond_to?(:unescaped) && element.key.unescaped == "to" }
-      pair&.value.then { |value| value.unescaped.to_sym if value.is_a?(Prism::SymbolNode) }
+      return nil if hash.nil?
+
+      pair = hash.elements.grep(Prism::AssocNode).find { |element| key_name(element) == "to" }
+      value = pair&.value
+      value.unescaped.to_sym if value.is_a?(Prism::SymbolNode)
+    end
+
+    def key_name(element)
+      element.key.unescaped if element.key.respond_to?(:unescaped)
     end
 
     def source_kind(node)
