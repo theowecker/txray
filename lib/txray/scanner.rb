@@ -29,7 +29,7 @@ module Txray
 
     def files
       roots = @paths.empty? ? @config.includes : @paths
-      roots.flat_map { |root| expand(root) }.uniq.reject { |path| excluded?(path) }.sort
+      roots.flat_map { |root| expand(root).reject { |path| excluded?(path, root) } }.uniq.sort
     end
 
     private
@@ -40,9 +40,12 @@ module Txray
       Dir.glob(File.join(root, "**", "*.rb"))
     end
 
-    def excluded?(path)
-      segments = path.split(File::SEPARATOR)
-      @config.excludes.any? { |pattern| segments.include?(pattern) || File.fnmatch?(pattern, path, File::FNM_PATHNAME) }
+    def excluded?(path, root)
+      relative = path.delete_prefix(root.chomp(File::SEPARATOR)).delete_prefix(File::SEPARATOR)
+      segments = relative.split(File::SEPARATOR)
+      @config.excludes.any? do |pattern|
+        segments.include?(pattern) || File.fnmatch?(pattern, relative, File::FNM_PATHNAME)
+      end
     end
   end
 end

@@ -58,6 +58,22 @@ RSpec.describe Txray::Scanner do
     end
   end
 
+  it "matches exclusions below the scanned root, not against the whole path" do
+    Dir.mktmpdir do |dir|
+      root = File.join(dir, "tmp", "vendor", "app")
+      FileUtils.mkdir_p(root)
+      File.write(File.join(root, "order.rb"), <<~RUBY)
+        class Order < ApplicationRecord
+          after_create :charge
+          def charge = Faraday.post(url)
+        end
+      RUBY
+
+      result = described_class.new(Txray::Config.new, paths: [ root ]).run
+      expect(result.offenses.map(&:id)).to eq([ "http-in-transaction" ])
+    end
+  end
+
   it "ignores files it cannot parse" do
     Dir.mktmpdir do |dir|
       File.write(File.join(dir, "broken.rb"), "class Order def")
