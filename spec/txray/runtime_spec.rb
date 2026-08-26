@@ -94,3 +94,63 @@ RSpec.describe Txray::Runtime do
     expect(described_class.options[:threshold_ms]).to eq(40)
   end
 end
+
+RSpec.describe "runtime on Rails without the start_transaction notification" do
+  before(:all) do
+    ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+    ActiveRecord::Schema.verbose = false
+    ActiveRecord::Schema.define do
+      create_table(:legacy_orders, force: true) { |t| t.string :state }
+    end
+    Object.const_set(:LegacyOrder, Class.new(ActiveRecord::Base) { self.table_name = "legacy_orders" }) unless defined?(LegacyOrder)
+  end
+
+  before do
+    Txray::Runtime.uninstall
+    allow(Txray::Runtime).to receive(:notifies_transaction_start?).and_return(false)
+    @log = File.join(Dir.mktmpdir, "legacy.ndjson")
+    Txray::Runtime.install(threshold_ms: 40, log_path: @log, guard_http: false, logger: Logger.new(IO::NULL))
+  end
+
+  after { Txray::Runtime.uninstall }
+
+  def events = File.exist?(@log) ? File.readlines(@log).map { |l| JSON.parse(l, symbolize_names: true) } : []
+  def depth = (Thread.current[:txray_transactions] || []).size
+
+  it "measures the real duration by timing the transaction itself" do
+    ActiveRecord::Base.transaction do
+      LegacyOrder.create!(state: "a")
+      sleep 0.06
+    end
+
+    expect(events.first[:duration_ms]).to be >= 40
+  end
+
+  it "still attributes a violation to the transaction that was open" do
+    ActiveRecord::Base.transaction do
+      LegacyOrder.create!(state: "a")
+      Txray::Runtime.violation("http-in-transaction", "POST api.example.com", duration_ms: 12.0)
+    end
+
+    expect(events.first[:violations].map { |v| v[:rule] }).to eq([ "http-in-transaction" ])
+  end
+
+  it "records a rollback and leaves the stack drained" do
+    expect do
+      ActiveRecord::Base.transaction do
+        LegacyOrder.create!(state: "a")
+        sleep 0.06
+        raise "boom"
+      end
+    end.to raise_error("boom")
+
+    expect(events.first[:outcome]).to eq("rollback")
+    expect(depth).to eq(0)
+  end
+
+  it "stays quiet for a fast clean transaction" do
+    ActiveRecord::Base.transaction { LegacyOrder.create!(state: "a") }
+
+    expect(events).to be_empty
+  end
+end

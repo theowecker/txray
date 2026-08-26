@@ -43,8 +43,13 @@ module Txray
       new(data.is_a?(Hash) ? data : {})
     end
 
+    ARRAY_KEYS = %w[include exclude disabled_rules external_clients].freeze
+    HASH_KEYS = %w[severities runtime].freeze
+    FAIL_LEVELS = %w[low medium high none].freeze
+
     def initialize(data = {})
-      @data = DEFAULTS.merge(data) { |_key, default, given| default.is_a?(Hash) ? default.merge(given.to_h) : given }
+      validate!(data)
+      @data = DEFAULTS.merge(data) { |_key, default, given| default.is_a?(Hash) ? default.merge(given) : given }
     end
 
     def includes = Array(@data["include"])
@@ -58,6 +63,26 @@ module Txray
 
     def rule_enabled?(id) = !disabled_rules.include?(id.to_s)
 
+    def validate!(data)
+      ARRAY_KEYS.each { |key| expect(data, key, Array) }
+      HASH_KEYS.each { |key| expect(data, key, Hash) }
+
+      depth = data["max_depth"]
+      raise Error, "max_depth must be a whole number, got #{depth.inspect}" if depth && !depth.is_a?(Integer)
+
+      level = data["fail_level"]
+      return if level.nil? || FAIL_LEVELS.include?(level.to_s)
+
+      raise Error, "fail_level must be one of #{FAIL_LEVELS.join(", ")}, got #{level.inspect}"
+    end
+
+    def expect(data, key, type)
+      value = data[key]
+      return if value.nil? || value.is_a?(type)
+
+      raise Error, "#{key} must be #{type == Array ? "a list" : "a mapping"}, got #{value.inspect}"
+    end
+
     def rule(id)
       severity = @data["severities"].to_h[id.to_s]
       base = Rules[id]
@@ -69,6 +94,8 @@ module Txray
     def merge(overrides)
       self.class.new(@data.merge(overrides.compact.transform_keys(&:to_s)))
     end
+
+    private :validate!, :expect
 
     def to_h = @data
   end

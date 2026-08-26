@@ -172,14 +172,35 @@ Exclusions apply to the path below the root being scanned, so `vendor` means the
 
 ### Inline suppression
 
+Directives follow the same shape as RuboCop's. A trailing comment silences that line:
+
 ```ruby
 def charge = Faraday.post(url) # txray:disable
-
-# txray:disable http-in-transaction
-Faraday.post(url)
+def charge = Faraday.post(url) # txray:disable http-in-transaction
 ```
 
-A bare `# txray:disable` disables every rule on that line; naming rules disables only those. The comment works on the offending line or the line directly above it.
+A comment on its own line opens a region that runs until the matching `enable`, or to the end of the file if there is none:
+
+```ruby
+# txray:disable http-in-transaction
+Faraday.post(url)
+Faraday.get(url)
+# txray:enable http-in-transaction
+```
+
+Name several rules with commas, and re-enable them independently:
+
+```ruby
+# txray:disable http-in-transaction, job-enqueue-in-transaction
+...
+# txray:enable job-enqueue-in-transaction
+```
+
+A bare directive, or `all`, covers every rule. At the top of a file that silences the whole file:
+
+```ruby
+# txray:disable all
+```
 
 ## Command line
 
@@ -203,18 +224,42 @@ Usage: txray [options] [paths]
 ## CI
 
 ```yaml
-- name: Scan for slow transactions
-  run: bundle exec txray --format github
+name: txray
+
+on:
+  pull_request:
+  push:
+    branches: [ main ]
+
+jobs:
+  transactions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          bundler-cache: true
+      - name: Scan for slow transactions
+        run: bundle exec txray --format github
 ```
 
-`--format github` writes inline annotations on the pull request. `--format sarif` uploads to GitHub code scanning:
+That one step does three things. It annotates the offending lines inline on the pull request, with the call path and the suggested fix in each annotation. It writes a table of every finding to the job summary, so the run page carries the full list even though GitHub caps how many annotations it will render for a single step. And it exits non zero, so the check fails.
+
+Use `--fail-level high` to annotate everything but only fail the build on the high severity rules, or `--fail-level none` to report without ever failing while you work through a backlog.
+
+To send findings to GitHub code scanning instead, so they appear in the Security tab and track across branches:
 
 ```yaml
-- run: bundle exec txray --format sarif > txray.sarif || true
-- uses: github/codeql-action/upload-sarif@v3
-  with:
-    sarif_file: txray.sarif
+      - run: bundle exec txray --format sarif > txray.sarif
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: txray.sarif
 ```
+
+That job needs `permissions: security-events: write`. `continue-on-error` matters: without it a failing scan skips the upload step, and the findings never arrive.
+
+Paths are reported relative to the working directory in every format, which is what GitHub needs to match a finding to a file in the repository.
 
 ## Runtime guard
 
@@ -228,6 +273,10 @@ runtime:
 ```
 
 It reports a transaction that stays open past the threshold, a job enqueued while a transaction is open, mail delivered while a transaction is open, and any `Net::HTTP` request made while a transaction is open (which covers Faraday, HTTParty, RestClient, Octokit and everything else built on it). Each finding is attributed to the transaction that was open, with the duration of the offending call and the application frame that caused it. `on_violation: log` warns, `raise` fails loudly. Run it as `raise` in test and `log` in development.
+
+### Rails versions
+
+The analyzer has no Rails dependency at all. The runtime guard supports **Rails 7.0 through 8.x** and picks its hook accordingly. From Rails 7.2 it subscribes to the `start_transaction.active_record` and `transaction.active_record` notifications. Rails 7.0 and 7.1 do not emit `start_transaction`, and the duration carried by `transaction.active_record` is not the duration of the transaction, so on those versions the guard times `within_new_transaction` itself. Both paths report the same real duration, attribute findings to the transaction that was open, and record the commit or rollback outcome; both are covered by the test suite and exercised in CI against 7.1, 7.2 and 8.0.
 
 Known-good work can be excused:
 
@@ -243,38 +292,7 @@ end
 
 The guard writes newline delimited JSON to `runtime.log_path`. `txray watch` tails it and renders what your application is doing right now:
 
-```
- txray  tmp/txray.ndjson                                                up 00:00:00  2 pids
-
-  txns  [██████████████████████████████████]  122 txns · 120 ok · 1 slow · 1 flagged
-  time  ▄▃▃▄▅▃▄▃▃▃▄▅▃▃▅▄▅▄▄▃▄▅▂▃▂▄▅▄▄▃▄▃▆█  p50 18ms · p95 140ms · max 1.84s
-
-    <10ms ███████████████████████████████ 45      <50ms █████████████████████████████·· 42
-   <100ms ███████████████████············ 27     <250ms ████··························· 6
-      <1s █······························ 1         1s+ █······························ 1
-
-  TIME       ELAPSED   SOURCE
-  13:48:09     1.84s ● app/models/order.rb:31 settle
-                      └ http-in-transaction POST api.stripe.com/v1/charges (1.61s)
-                      └ job-enqueue-in-transaction ShipJob enqueued
-  13:47:32     268ms ● app/services/checkout.rb:12 call
-  13:45:11       9ms · app/models/photo.rb:8 save
-  13:45:10      18ms · app/models/photo.rb:8 save
-  13:45:09       9ms · app/models/photo.rb:8 save
-  13:45:08      41ms · app/models/photo.rb:8 save
-  13:45:07      18ms · app/models/photo.rb:8 save
-  13:45:06      63ms · app/models/photo.rb:8 save
-  13:45:05      26ms · app/models/photo.rb:8 save
-  13:45:04       4ms · app/models/photo.rb:8 save
-
-  HOTSPOTS
-     1x  http-in-transaction              app/models/order.rb:34
-     1x  job-enqueue-in-transaction       app/models/order.rb:38
-     1x  slow-transaction                 app/services/checkout.rb:12 call
-     1x  slow-transaction                 app/models/order.rb:31 settle
-
-  ctrl-c  stop
-```
+![the txray live monitor](https://raw.githubusercontent.com/theowecker/txray/main/doc/monitor.png)
 
 The `txns` meter is a stacked bar of clean, slow and flagged transactions. The `time` row is a log scaled sparkline of recent durations next to p50, p95 and max, all coloured against your threshold. Below that is a latency histogram, then the live feed, where findings hang under the transaction that produced them, so you see the 1.84 second transaction and the two calls that account for most of it. Hotspots rank what keeps happening. Everything is coloured by rule severity and clipped to your terminal, down to 60 columns.
 

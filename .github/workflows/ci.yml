@@ -8,10 +8,19 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: ruby ${{ matrix.ruby }}${{ matrix.rails && format(' / rails {0}', matrix.rails) || '' }}
     strategy:
       fail-fast: false
       matrix:
-        ruby: [ "3.2", "3.3", "3.4" ]
+        include:
+          - { ruby: "3.2", rails: "7.1" }
+          - { ruby: "3.3", rails: "7.2" }
+          - { ruby: "3.4", rails: "8.0" }
+          - { ruby: "3.2", rails: "" }
+          - { ruby: "3.3", rails: "" }
+          - { ruby: "3.4", rails: "" }
+    env:
+      RAILS_VERSION: ${{ matrix.rails }}
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1

@@ -89,6 +89,22 @@ module Txray
         @sink.write(event)
       end
 
+      def open_transaction
+        Stack.push(app_backtrace.first)
+      end
+
+      def close_transaction(outcome)
+        transaction = Stack.pop
+        return if transaction.nil? || ignoring?
+
+        duration = transaction.duration_ms
+        slow = duration >= @options[:threshold_ms]
+        return unless slow || transaction.violations.any?
+
+        report(transaction.to_event(outcome || :commit))
+        announce_slow(duration) if slow
+      end
+
       private
 
       def announce(rule, message)
@@ -121,31 +137,25 @@ module Txray
       end
 
       def watch_transactions
-        subscribe("start_transaction.active_record") { open_transaction }
-        subscribe("transaction.active_record") { |event| close_transaction(event) }
+        if notifies_transaction_start?
+          subscribe("start_transaction.active_record") { open_transaction }
+          subscribe("transaction.active_record") { |event| close_transaction(event.payload[:outcome]) }
+        else
+          patch_transaction_manager
+        end
       end
 
-      def open_transaction
-        Stack.push(app_backtrace.first)
+      def notifies_transaction_start?
+        return false unless defined?(ActiveRecord::VERSION::STRING)
+
+        Gem::Version.new(ActiveRecord::VERSION::STRING) >= Gem::Version.new("7.2")
       end
 
-      def close_transaction(event)
-        transaction = Stack.pop
-        return if ignoring?
+      def patch_transaction_manager
+        return if @transactions_patched
 
-        duration = transaction&.duration_ms || event.duration.round(1)
-        slow = duration >= @options[:threshold_ms]
-        violations = transaction&.violations.to_a
-        return unless slow || violations.any?
-
-        outcome = event.payload[:outcome] || :commit
-        report((transaction&.to_event(outcome) || fallback_event(duration, outcome)).merge(duration_ms: duration))
-        announce_slow(duration) if slow
-      end
-
-      def fallback_event(duration, outcome)
-        { type: "transaction", at: Time.now.to_f, pid: Process.pid, duration_ms: duration,
-          outcome: outcome.to_s, source: app_backtrace.first, violations: [] }
+        ActiveRecord::ConnectionAdapters::DatabaseStatements.prepend(TransactionTimer)
+        @transactions_patched = true
       end
 
       def announce_slow(duration)
@@ -176,6 +186,23 @@ module Txray
         require "net/http"
         Net::HTTP.prepend(NetHttpGuard)
         @http_patched = true
+      end
+    end
+
+    module TransactionTimer
+      def within_new_transaction(*, **, &)
+        return super unless Txray::Runtime.installed?
+
+        Txray::Runtime.open_transaction
+        outcome = :commit
+        begin
+          super
+        rescue Exception # rubocop:disable Lint/RescueException
+          outcome = :rollback
+          raise
+        ensure
+          Txray::Runtime.close_transaction(outcome)
+        end
       end
     end
 

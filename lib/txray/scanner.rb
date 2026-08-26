@@ -43,10 +43,23 @@ module Txray
     def files
       roots = @paths.empty? ? @config.includes : @paths
       verify(roots) unless @paths.empty?
-      roots.flat_map { |root| expand(root).reject { |path| excluded?(path, root) } }.uniq.sort
+      roots.flat_map { |root| expand(root).reject { |path| excluded?(path, root) } }
+           .map { |path| relative(path) }.uniq.sort
     end
 
     private
+
+    def relative(path)
+      absolute = resolve(path)
+      root = "#{Dir.pwd}#{File::SEPARATOR}"
+      absolute.start_with?(root) ? absolute.delete_prefix(root) : path
+    end
+
+    def resolve(path)
+      File.realpath(path)
+    rescue StandardError
+      File.expand_path(path)
+    end
 
     def verify(roots)
       missing = roots.reject { |root| File.exist?(root) }
