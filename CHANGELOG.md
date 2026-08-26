@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1
+
+Nothing in the analyzer, the runtime guard or the reporters changed. This release exists to exercise the publishing pipeline on something low stakes before a release that matters.
+
+- Releases are now published by GitHub Actions through RubyGems trusted publishing, so no API key is created, pasted or stored. Tagging checks the tag against `Txray::VERSION`, runs the suite, publishes the gem and creates the GitHub release with the notes taken from this file.
+- Corrected the release steps in `CONTRIBUTING.md`, which told contributors to push a version bump straight to a protected `main`.
+
 ## 0.2.0
 
 - Track clients held in local variables, instance variables, constants, memoized readers and `delegate` targets, so the request is reported rather than the harmless construction.
