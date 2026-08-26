@@ -1,0 +1,7 @@
+/.bundle/
+/pkg/
+/tmp/
+/spec/examples.txt
+Gemfile.lock
+.DS_Store
+/*.gem
