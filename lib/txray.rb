@@ -13,6 +13,7 @@ require_relative "txray/source_file"
 require_relative "txray/method_index"
 require_relative "txray/transaction_scope"
 require_relative "txray/classifier"
+require_relative "txray/client_index"
 require_relative "txray/analyzer"
 require_relative "txray/scanner"
 require_relative "txray/reporters"
@@ -26,9 +27,7 @@ module Txray
 
   def self.analyze(code, path: "(string)", config: Config.new)
     source = SourceFile.parse(path, code: code) or return []
-    index = MethodIndex.new
-    index.index(source)
-    Analyzer.new(index: index, config: config).call(source).sort_by(&:sort_key)
+    Scanner.new(config).analyze([ source ]).sort_by(&:sort_key)
   end
 end
 

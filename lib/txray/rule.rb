@@ -78,6 +78,22 @@ module Txray
     )
 
     register(
+      id: "broadcast-in-transaction",
+      category: :transaction,
+      severity: :medium,
+      message: "Broadcast `%{snippet}` is pushed inside %{scope}",
+      remedy: "Rendering and pushing before the commit lets subscribers see rows that are not committed yet, or that roll back. Broadcast from after_commit."
+    )
+
+    register(
+      id: "dynamic-dispatch-in-transaction",
+      category: :transaction,
+      severity: :low,
+      message: "`%{snippet}` dispatches to a name txray cannot resolve inside %{scope}",
+      remedy: "Static analysis stops here. Check by hand that the target does no network or filesystem work, or enable the runtime guard."
+    )
+
+    register(
       id: "blocking-io-in-transaction",
       category: :transaction,
       severity: :medium,

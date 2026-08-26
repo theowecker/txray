@@ -15,12 +15,19 @@ module Txray
 
     def run
       sources = files.filter_map { |path| SourceFile.parse(path) }
-      index = MethodIndex.new
-      sources.each { |source| index.index(source) }
-      analyzer = Analyzer.new(index: index, config: @config)
+      Result.new(offenses: analyze(sources), files: sources.map(&:path))
+    end
 
-      offenses = sources.flat_map { |source| analyzer.call(source) }
-      Result.new(offenses: dedupe(offenses).sort_by(&:sort_key), files: sources.map(&:path))
+    def analyze(sources)
+      index = MethodIndex.new
+      clients = ClientIndex.new(Classifier.new(@config))
+      sources.each do |source|
+        index.index(source)
+        clients.index(source)
+      end
+
+      analyzer = Analyzer.new(index: index, clients: clients, config: @config)
+      dedupe(sources.flat_map { |source| analyzer.call(source) }).sort_by(&:sort_key)
     end
 
     def dedupe(offenses)

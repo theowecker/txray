@@ -3,9 +3,9 @@
 module Txray
   module Catalog
     HTTP_NAMESPACES = %w[
-      Net::HTTP Net::HTTPS Net::FTP Net::SSH Net::SFTP Net::Telnet
-      Faraday HTTParty RestClient Excon Typhoeus HTTPX HTTPClient Curl Patron Mechanize Down
-      OpenURI Socket TCPSocket
+      Net::HTTP Net::HTTPS Net::SMTP Net::IMAP Net::POP3 Net::FTP Net::SSH Net::SFTP Net::Telnet
+      Faraday HTTParty RestClient Excon Typhoeus HTTPX HTTPClient HTTP Curl Patron Mechanize Down
+      Savon GraphQL::Client OpenURI Socket TCPSocket UDPSocket
     ].freeze
 
     SERVICE_NAMESPACES = %w[
@@ -13,9 +13,10 @@ module Txray
       Aws AWS Azure Google GoogleDrive Firebase Cloudinary Imgix
       Twilio SendGrid Mailgun Postmark Mailchimp Customerio Intercom Zendesk Front
       Slack Discordrb Octokit Gitlab Shopify Salesforce Hubspot Airtable Notion
-      Algolia Elasticsearch OpenSearch Meilisearch Typesense
+      Algolia Elasticsearch OpenSearch Meilisearch Typesense Searchkick Sunspot
+      Geocoder Mapbox LaunchDarkly Fog Vonage Nexmo Resend Pay Auth0 Okta Clerk
       Pusher Ably Segment Mixpanel Amplitude Posthog
-      OpenAI Anthropic Gemini Replicate Pinecone
+      OpenAI Anthropic Gemini Replicate Pinecone RubyLLM Ollama Langchain
       Onfido Persona Checkr Twitter Linkedin Zoom
     ].freeze
 
@@ -25,6 +26,18 @@ module Txray
     SHELL_NAMESPACES = %w[Open3 Process Kernel IO PTY].freeze
 
     MAIL_METHODS = %i[deliver_now deliver_now!].freeze
+
+    SEARCH_METHODS = %i[reindex reindex! geocode reverse_geocode].freeze
+
+    BROADCAST_METHODS = %i[
+      broadcast_to broadcast_replace_to broadcast_update_to broadcast_append_to broadcast_prepend_to
+      broadcast_remove_to broadcast_before_to broadcast_after_to broadcast_action_to broadcast_render_to
+      broadcast_refresh_to broadcast_replace broadcast_update broadcast_append broadcast_prepend
+    ].freeze
+
+    DISPATCH_METHODS = %i[send public_send __send__ try try!].freeze
+
+    CONSTRUCTOR_METHODS = %i[new client connection build configure resource service session].freeze
 
     ENQUEUE_METHODS = %i[
       perform_later deliver_later deliver_later! perform_async perform_in perform_at

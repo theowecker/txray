@@ -20,7 +20,9 @@ module Txray
       Namespaces.each(source.root) do |namespace, node|
         case node
         when Prism::DefNode then add_method(namespace, node, source)
-        when Prism::CallNode then add_include(namespace, node)
+        when Prism::CallNode
+          add_include(namespace, node)
+          add_defined_method(namespace, node, source)
         end
       end
     end
@@ -48,6 +50,16 @@ module Txray
       entry = MethodEntry.new(namespace: namespace, name: node.name.to_sym, node: node, source: source,
                               singleton: singleton)
       (table[namespace] ||= {})[entry.name] ||= entry
+    end
+
+    def add_defined_method(namespace, call, source)
+      return unless call.receiver.nil? && call.name == :define_method && call.block.is_a?(Prism::BlockNode)
+
+      name = NodeHelpers.symbol_arguments(call).first
+      return if name.nil?
+
+      entry = MethodEntry.new(namespace: namespace, name: name, node: call.block, source: source, singleton: false)
+      (@instance[namespace] ||= {})[name] ||= entry
     end
 
     def add_include(namespace, node)
