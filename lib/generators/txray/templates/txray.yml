@@ -1,0 +1,37 @@
+# Where to look. Paths are relative to the project root.
+include:
+  - app
+  - lib
+  - db/migrate
+exclude:
+  - spec
+  - test
+  - vendor
+
+# How far to follow a call out of a transaction before giving up.
+max_depth: 3
+
+# Exit non zero at or above this severity: low, medium, high or none.
+fail_level: low
+
+# Rules to turn off entirely. `txray --rules` lists them all.
+disabled_rules: []
+
+# Raise or lower a rule without turning it off.
+severities: {}
+
+# Your own service wrappers. Any constant under these is treated as a
+# third party client, so a call on one inside a transaction is reported.
+external_clients: []
+
+# The runtime guard. Off by default. It reports transactions that run long
+# and the HTTP, mail and job work that happens while one is open, and writes
+# the event log that `txray watch` reads.
+#
+# The gem must NOT be `require: false` in your Gemfile for this to load.
+runtime:
+  enabled: false
+  threshold_ms: 250
+  on_violation: log # log, or raise to fail loudly in test
+  log_path: tmp/txray.ndjson
+  ignore: []

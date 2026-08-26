@@ -16,17 +16,31 @@ app/models/order.rb
 
 ## Install
 
+For the scanner alone:
+
 ```ruby
 group :development, :test do
   gem "txray", require: false
 end
 ```
 
+For the scanner **and** the runtime guard and live monitor, drop `require: false`, or the railtie never loads and the guard silently never installs:
+
+```ruby
+group :development, :test do
+  gem "txray"
+end
+```
+
+Then:
+
 ```sh
 bundle exec txray
 ```
 
-It exits non zero when it finds something, so it drops straight into CI.
+It exits non zero when it finds something, so it drops straight into CI. No configuration is required; everything below has a default.
+
+In a Rails app, `bin/rails generate txray:install` writes a commented `.txray.yml` and prints the next steps. Outside Rails, `bundle exec txray --init` writes the same file.
 
 ## What counts as a transaction
 
@@ -230,29 +244,78 @@ end
 The guard writes newline delimited JSON to `runtime.log_path`. `txray watch` tails it and renders what your application is doing right now:
 
 ```
-  txray watching tmp/txray.ndjson  00:04:12
+ txray  tmp/txray.ndjson                                                up 00:00:00  2 pids
 
-  transactions    142 seen   9 slow   4 with findings
-  duration        p50 12ms   p95 240ms   max 1.84s
-                  ▁▁▂▁▁▁▁▁▁▂▁▁▁▁▁▅▁▁▁▁▁▂▁▁▁▁▁▁▁▁▂█
+  txns  [██████████████████████████████████]  122 txns · 120 ok · 1 slow · 1 flagged
+  time  ▄▃▃▄▅▃▄▃▃▃▄▅▃▃▅▄▅▄▄▃▄▅▂▃▂▄▅▄▄▃▄▃▆█  p50 18ms · p95 140ms · max 1.84s
 
-  LIVE
-  14:02:11              1.84s  x  app/models/order.rb:31 settle
-                          | http-in-transaction POST api.stripe.com/v1/charges (1.61s)
-                          | mail-in-transaction ReceiptMailer delivered mail (180ms)
-  14:02:10               268ms  !  app/services/checkout.rb:12 call
-  14:02:09                11ms  .  app/models/photo.rb:8 save
+    <10ms ███████████████████████████████ 45      <50ms █████████████████████████████·· 42
+   <100ms ███████████████████············ 27     <250ms ████··························· 6
+      <1s █······························ 1         1s+ █······························ 1
+
+  TIME       ELAPSED   SOURCE
+  13:48:09     1.84s ● app/models/order.rb:31 settle
+                      └ http-in-transaction POST api.stripe.com/v1/charges (1.61s)
+                      └ job-enqueue-in-transaction ShipJob enqueued
+  13:47:32     268ms ● app/services/checkout.rb:12 call
+  13:45:11       9ms · app/models/photo.rb:8 save
+  13:45:10      18ms · app/models/photo.rb:8 save
+  13:45:09       9ms · app/models/photo.rb:8 save
+  13:45:08      41ms · app/models/photo.rb:8 save
+  13:45:07      18ms · app/models/photo.rb:8 save
+  13:45:06      63ms · app/models/photo.rb:8 save
+  13:45:05      26ms · app/models/photo.rb:8 save
+  13:45:04       4ms · app/models/photo.rb:8 save
 
   HOTSPOTS
-    3x  http-in-transaction              app/models/order.rb:34
-    1x  job-enqueue-in-transaction       app/models/photo.rb:8
+     1x  http-in-transaction              app/models/order.rb:34
+     1x  job-enqueue-in-transaction       app/models/order.rb:38
+     1x  slow-transaction                 app/services/checkout.rb:12 call
+     1x  slow-transaction                 app/models/order.rb:31 settle
 
-  ctrl-c to stop
+  ctrl-c  stop
 ```
 
-Findings are grouped under the transaction that produced them, so you see the transaction that took 1.84 seconds and the two calls that account for most of it. Ctrl-C prints a summary of the session. Piped to a file or another process it emits the raw event stream instead of the dashboard, so `txray watch | jq` works.
+The `txns` meter is a stacked bar of clean, slow and flagged transactions. The `time` row is a log scaled sparkline of recent durations next to p50, p95 and max, all coloured against your threshold. Below that is a latency histogram, then the live feed, where findings hang under the transaction that produced them, so you see the 1.84 second transaction and the two calls that account for most of it. Hotspots rank what keeps happening. Everything is coloured by rule severity and clipped to your terminal, down to 60 columns.
 
-The log is append only with an exclusive lock per write, so several Puma workers and Sidekiq processes can share one file.
+### Turning it on
+
+Three steps, in this order:
+
+1. **Gemfile** must not say `require: false` (see Install above), or nothing is ever written.
+2. **Enable the guard**, in `.txray.yml`:
+
+   ```yaml
+   runtime:
+     enabled: true
+     threshold_ms: 250
+   ```
+
+   or in `config/environments/development.rb`:
+
+   ```ruby
+   config.txray.enabled = true
+   config.txray.threshold_ms = 250
+   ```
+
+3. **Restart the app**, then run the two side by side:
+
+   ```
+   terminal 1:  bin/dev
+   terminal 2:  bundle exec txray watch
+   ```
+
+Exercise the app and transactions appear as they close. Only transactions that ran past the threshold or carried a finding are recorded, so the feed stays quiet until something is actually wrong. If the log does not exist yet, `txray watch` says so and repeats these steps on screen rather than sitting blank.
+
+| Flag | Effect |
+| --- | --- |
+| `--from-start` | replay the existing log instead of only new events |
+| `--threshold 100` | lower the bar to see more |
+| `--file PATH` | watch a different log |
+
+Ctrl-C prints a summary of the session. Piped to a file or another process it emits the raw event stream instead of the dashboard, so `txray watch | jq` works.
+
+The log is append only with an exclusive lock per write, so several Puma workers and Sidekiq processes can share one file. It is newline delimited JSON rather than a text log because the watcher reads it incrementally while it is being written: one line is one complete record, so a partial read is never a partial event, concurrent writers cannot interleave into one record, and the nested findings and durations survive without parsing prose. It is still a plain text file, so `tail -f tmp/txray.ndjson` works.
 
 ## How this differs from what already exists
 

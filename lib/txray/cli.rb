@@ -63,6 +63,9 @@ module Txray
 
       File.write(Config::FILENAME, YAML.dump(Config::DEFAULTS))
       @io.puts "created #{Config::FILENAME}"
+      @io.puts
+      @io.puts "scan with:            bundle exec txray"
+      @io.puts "watch transactions:   set runtime.enabled to true, restart, then bundle exec txray watch"
       EXIT_CLEAN
     end
 

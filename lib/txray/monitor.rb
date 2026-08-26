@@ -30,9 +30,28 @@ module Txray
       nil
     end
 
+    BUCKETS = [ [ 10, "<10ms" ], [ 50, "<50ms" ], [ 100, "<100ms" ], [ 250, "<250ms" ],
+                [ 1000, "<1s" ], [ Float::INFINITY, "1s+" ] ].freeze
+
     def recent(limit) = @recent.first(limit)
+    def pids = @transactions.map { |event| event[:pid] }.uniq.size
+
+    def breakdown
+      flagged = @transactions.count { |event| event[:violations].to_a.any? }
+      slow = @transactions.count { |event| slow?(event) && event[:violations].to_a.empty? }
+      { ok: @transactions.size - flagged - slow, slow: slow, flagged: flagged }
+    end
+
+    def histogram
+      BUCKETS.map do |limit, label|
+        { label: label, limit: limit,
+          count: durations.count { |value| value < limit && value >= previous_limit(limit) } }
+      end
+    end
+
     def durations = @transactions.map { |event| event[:duration_ms].to_f }
-    def slow = @transactions.count { |event| event[:duration_ms].to_f >= @threshold_ms }
+    def slow = @transactions.count { |event| slow?(event) }
+    def slow?(event) = event[:duration_ms].to_f >= @threshold_ms
     def flagged = @transactions.count { |event| event[:violations].to_a.any? }
     def uptime = Time.now - @started_at
     def empty? = @transactions.empty? && @violations.empty?
@@ -59,6 +78,11 @@ module Txray
     end
 
     private
+
+    def previous_limit(limit)
+      index = BUCKETS.index { |bucket_limit, _| bucket_limit == limit }
+      index.zero? ? 0 : BUCKETS[index - 1].first
+    end
 
     def add(collection, event)
       collection << event
