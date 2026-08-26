@@ -31,7 +31,12 @@ module Txray
       def print_summary(result)
         counts = result.counts
         summary = Offense::SEVERITIES.reverse.filter_map { |s| "#{counts[s]} #{s}" if counts[s] }
-        @io.puts "#{result.files.size} files scanned, #{result.offenses.size} offenses#{" (#{summary.join(", ")})" unless summary.empty?}"
+        @io.puts "#{result.files.size} files scanned, #{result.offenses.size} offenses" \
+                 "#{" (#{summary.join(", ")})" unless summary.empty?}"
+        return if result.skipped.to_a.empty?
+
+        @io.puts dim("#{result.skipped.size} files could not be parsed and were skipped:")
+        result.skipped.each { |path| @io.puts dim("  #{path}") }
       end
 
       def tint(text, severity) = @color ? "\e[#{COLORS.fetch(severity, 0)}m#{text}\e[0m" : text

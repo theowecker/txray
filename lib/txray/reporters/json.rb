@@ -12,7 +12,8 @@ module Txray
       def report(result)
         @io.puts JSON.pretty_generate(
           version: Txray::VERSION,
-          summary: { files: result.files.size, offenses: result.offenses.size, severities: result.counts },
+          summary: { files: result.files.size, offenses: result.offenses.size, severities: result.counts,
+                     skipped: result.skipped.to_a },
           offenses: result.offenses.map(&:to_h)
         )
       end

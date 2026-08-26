@@ -40,7 +40,8 @@ module Txray
     def filter(result)
       return result unless @options[:only]
 
-      Result.new(offenses: result.offenses.select { |o| @options[:only].include?(o.id) }, files: result.files)
+      Result.new(offenses: result.offenses.select { |offense| @options[:only].include?(offense.id) },
+                 files: result.files, skipped: result.skipped)
     end
 
     def watch

@@ -14,13 +14,22 @@ module Txray
       end
 
       def write(event)
-        FileUtils.mkdir_p(File.dirname(@path))
+        prepare
         File.open(@path, "a") do |file|
           file.flock(File::LOCK_EX)
           file.puts(JSON.generate(event))
         end
       rescue StandardError
         nil
+      end
+
+      private
+
+      def prepare
+        return if @prepared
+
+        FileUtils.mkdir_p(File.dirname(@path))
+        @prepared = true
       end
 
       class Null

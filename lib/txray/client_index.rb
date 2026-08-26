@@ -2,6 +2,12 @@
 
 module Txray
   class ClientIndex
+    RETURN_WRITES = [
+      Prism::InstanceVariableOrWriteNode, Prism::InstanceVariableWriteNode,
+      Prism::LocalVariableOrWriteNode, Prism::LocalVariableWriteNode,
+      Prism::ConstantOrWriteNode, Prism::ConstantWriteNode
+    ].freeze
+
     def initialize(classifier)
       @classifier = classifier
       @locals = {}
@@ -14,23 +20,24 @@ module Txray
     def index(source)
       Namespaces.each(source.root) do |namespace, node|
         case node
-        when Prism::LocalVariableWriteNode then bind(@locals, node.name, node.value)
-        when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOrWriteNode then bind(@ivars, node.name, node.value)
-        when Prism::ConstantWriteNode then bind(@constants, node.name, node.value)
+        when Prism::LocalVariableWriteNode then bind(@locals, source.path, node.name, node.value)
+        when Prism::InstanceVariableWriteNode, Prism::InstanceVariableOrWriteNode
+          bind(@ivars, namespace, node.name, node.value)
+        when Prism::ConstantWriteNode then bind_constant(namespace, node)
         when Prism::DefNode then bind_method(namespace, node)
         when Prism::CallNode then bind_delegation(namespace, node)
         end
       end
     end
 
-    def kind_of(node, namespace, depth = 0)
+    def kind_of(node, context, depth = 0)
       return nil if node.nil? || depth > 4
 
       case node
-      when Prism::LocalVariableReadNode then @locals[node.name]
-      when Prism::InstanceVariableReadNode then @ivars[node.name]
-      when Prism::ConstantReadNode, Prism::ConstantPathNode then constant_kind(node)
-      when Prism::CallNode then call_kind(node, namespace, depth)
+      when Prism::LocalVariableReadNode then @locals.dig(context.path, node.name)
+      when Prism::InstanceVariableReadNode then @ivars.dig(context.namespace, node.name)
+      when Prism::ConstantReadNode, Prism::ConstantPathNode then constant_kind(node, context.namespace)
+      when Prism::CallNode then call_kind(node, context, depth)
       end
     end
 
@@ -43,32 +50,43 @@ module Txray
 
     private
 
-    def call_kind(node, namespace, depth)
-      return @methods.dig(namespace, node.name) if node.receiver.nil?
+    def call_kind(node, context, depth)
+      return @methods.dig(context.namespace, node.name) if node.receiver.nil?
 
-      constructed_kind(node) || kind_of(node.receiver, namespace, depth + 1)
+      constructed_kind(node) || kind_of(node.receiver, context, depth + 1)
     end
 
     def constructed_kind(node)
       @classifier.constructor?(node) ? @classifier.constant_rule(NodeHelpers.constant_name(node.receiver)) : nil
     end
 
-    def constant_kind(node)
-      name = NodeHelpers.constant_name(node)
-      @constants[name.to_s.split("::").last.to_sym]
+    def constant_kind(node, namespace)
+      name = NodeHelpers.constant_name(node).to_s
+      @constants[qualify(namespace, name)] || @constants[name]
     end
 
-    def bind(table, name, value)
+    def qualify(namespace, name) = namespace.to_s.empty? ? name.to_s : "#{namespace}::#{name}"
+
+    def bind(table, scope, name, value)
       kind = source_kind(value)
-      table[name] = kind if kind
+      (table[scope] ||= {})[name] = kind if kind
+    end
+
+    def bind_constant(namespace, node)
+      kind = source_kind(node.value)
+      @constants[qualify(namespace, node.name)] = kind if kind
     end
 
     def bind_method(namespace, node)
-      return if node.body.nil?
-
-      kind = nil
-      NodeHelpers.each_node(node.body) { |child| kind ||= source_kind(child) }
+      kind = returned_kind(node.body)
       (@methods[namespace] ||= {})[node.name] = kind if kind
+    end
+
+    def returned_kind(body)
+      node = body.is_a?(Prism::StatementsNode) ? body.body.last : body
+      return source_kind(node.value) if RETURN_WRITES.any? { |type| node.is_a?(type) }
+
+      source_kind(node)
     end
 
     def bind_delegation(namespace, call)
@@ -84,8 +102,7 @@ module Txray
       hash = NodeHelpers.positional_arguments(call).grep(Prism::KeywordHashNode).first
       return nil if hash.nil?
 
-      pair = hash.elements.grep(Prism::AssocNode).find { |element| key_name(element) == "to" }
-      value = pair&.value
+      value = hash.elements.grep(Prism::AssocNode).find { |element| key_name(element) == "to" }&.value
       value.unescaped.to_sym if value.is_a?(Prism::SymbolNode)
     end
 

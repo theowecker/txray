@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module Txray
-  Result = Struct.new(:offenses, :files, keyword_init: true) do
+  Result = Struct.new(:offenses, :files, :skipped, keyword_init: true) do
     def counts = offenses.group_by(&:severity).transform_values(&:size)
     def worst = offenses.map(&:severity_rank).max
     def failing?(level) = worst && worst >= (Offense::SEVERITIES.index(level) || Offense::SEVERITIES.size)
@@ -14,8 +14,14 @@ module Txray
     end
 
     def run
-      sources = files.filter_map { |path| SourceFile.parse(path) }
-      Result.new(offenses: analyze(sources), files: sources.map(&:path))
+      sources = []
+      skipped = []
+      files.each do |path|
+        source = SourceFile.parse(path)
+        source ? sources << source : skipped << path
+      end
+
+      Result.new(offenses: analyze(sources), files: sources.map(&:path), skipped: skipped)
     end
 
     def analyze(sources)
@@ -36,10 +42,16 @@ module Txray
 
     def files
       roots = @paths.empty? ? @config.includes : @paths
+      verify(roots) unless @paths.empty?
       roots.flat_map { |root| expand(root).reject { |path| excluded?(path, root) } }.uniq.sort
     end
 
     private
+
+    def verify(roots)
+      missing = roots.reject { |root| File.exist?(root) }
+      raise Error, "no such file or directory: #{missing.join(", ")}" if missing.any?
+    end
 
     def expand(root)
       return [ root ] if File.file?(root)

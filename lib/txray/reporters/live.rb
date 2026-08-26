@@ -18,12 +18,14 @@ module Txray
       def open = @io.print(HIDE_CURSOR)
 
       def close(monitor)
+        @width, @height = viewport
         @io.print(SHOW_CURSOR)
         @io.puts
         summary(monitor)
       end
 
       def draw(monitor)
+        @width, @height = viewport
         @io.print("\e[H\e[2J")
         header(monitor)
         stats(monitor)
@@ -34,6 +36,20 @@ module Txray
       end
 
       private
+
+      def viewport
+        rows, columns = IO.console&.winsize
+        [ columns.to_i.positive? ? columns : 100, rows.to_i.positive? ? rows : 40 ]
+      rescue StandardError
+        [ 100, 40 ]
+      end
+
+      def feed_limit = (@height - 19).clamp(3, 9)
+
+      def clip(text, budget)
+        budget = [ budget, 12 ].max
+        text.length <= budget ? text : "..#{text[-(budget - 2)..]}"
+      end
 
       def header(monitor)
         @io.puts
@@ -75,7 +91,7 @@ module Txray
       end
 
       def feed(monitor)
-        rows = monitor.recent(9)
+        rows = monitor.recent(feed_limit)
         return if rows.empty?
 
         @io.puts "  #{dim("LIVE")}"
@@ -89,20 +105,22 @@ module Txray
                  else
                    (event[:duration_ms].to_f >= @threshold_ms ? yellow("!") : green("."))
                  end
-        line = "  #{dim(time(event))} #{duration(event[:duration_ms]).rjust(18)}  #{marker}  #{source(event)}"
+        line = "  #{dim(time(event))} #{duration(event[:duration_ms]).rjust(18)}  #{marker}  " \
+               "#{clip(source(event), @width - 36)}"
         [ line, *event[:violations].to_a.map { |violation| finding_row(violation) } ].join("\n")
       end
 
       def violation_row(event)
         "  #{dim(time(event))} #{elapsed(event[:duration_ms]).rjust(18)}  #{red("x")}  " \
-          "#{red(event[:rule].to_s)} #{dim(source(event))}"
+          "#{red(event[:rule].to_s)} #{dim(clip(source(event), @width - 36 - event[:rule].to_s.length))}"
       end
 
       def elapsed(milliseconds) = milliseconds ? duration(milliseconds) : dim("-")
 
       def finding_row(violation)
         detail = [ violation[:message], duration_suffix(violation) ].compact.join(" ")
-        "  #{" " * 24}#{dim("|")} #{yellow(violation[:rule].to_s)} #{dim(detail)}"
+        rule = violation[:rule].to_s
+        "  #{" " * 24}#{dim("|")} #{yellow(rule)} #{dim(clip(detail, @width - 28 - rule.length))}"
       end
 
       def duration_suffix(violation)
@@ -117,7 +135,8 @@ module Txray
 
         @io.puts "  #{dim("HOTSPOTS")}"
         rows.each do |entry|
-          @io.puts "  #{"#{entry[:count]}x".rjust(4)}  #{yellow(entry[:rule].to_s.ljust(32))} #{dim(source(entry))}"
+          @io.puts "  #{"#{entry[:count]}x".rjust(4)}  #{yellow(entry[:rule].to_s.ljust(32))} " \
+                   "#{dim(clip(source(entry), @width - 42))}"
         end
         @io.puts
       end

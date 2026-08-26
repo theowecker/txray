@@ -25,6 +25,7 @@ module Txray
     private
 
     Walk = Struct.new(:scope, :suppressed, :visited, keyword_init: true)
+    Context = Struct.new(:namespace, :path, keyword_init: true)
 
     def explore(node, namespace, source, walk, depth, trace, &emit)
       NodeHelpers.each_node(node) do |current|
@@ -36,7 +37,7 @@ module Txray
     def report(node, namespace, source, walk, trace, &emit)
       return if walk.suppressed.include?(node.object_id)
 
-      rule_id = rule_for(node, namespace)
+      rule_id = rule_for(node, namespace, source)
       return unless rule_id && @config.rule_enabled?(rule_id)
       return if source.disabled?(node.location.start_line, rule_id)
 
@@ -46,16 +47,16 @@ module Txray
                             scope: walk.scope, trace: trace))
     end
 
-    def rule_for(node, namespace)
-      @classifier.call(node) || client_rule(node, namespace) ||
+    def rule_for(node, namespace, source)
+      @classifier.call(node) || client_rule(node, namespace, source) ||
         (@classifier.iteration?(node) ? "iteration-in-transaction" : nil)
     end
 
-    def client_rule(node, namespace)
+    def client_rule(node, namespace, source)
       return nil unless node.is_a?(Prism::CallNode)
       return @clients.delegated_kind(namespace, node.name) if node.receiver.nil?
 
-      @clients.kind_of(node.receiver, namespace)
+      @clients.kind_of(node.receiver, Context.new(namespace: namespace, path: source.path))
     end
 
     def suppress_receivers(node, walk)

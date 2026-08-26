@@ -14,12 +14,14 @@ module Txray
 
     def call(source)
       migrations = Set.new
+      modules = Set.new
       scopes = []
 
       Namespaces.each(source.root) do |namespace, node|
         case node
         when Prism::ClassNode then migrations << namespace if transactional_migration?(node)
-        when Prism::CallNode then scopes.concat(from_call(namespace, node, source))
+        when Prism::ModuleNode then modules << namespace
+        when Prism::CallNode then scopes.concat(from_call(namespace, node, source, modules))
         when Prism::DefNode then scopes.concat(from_definition(namespace, node, source, migrations))
         end
       end
@@ -29,21 +31,22 @@ module Txray
 
     private
 
-    def from_call(namespace, call, source)
+    def from_call(namespace, call, source, modules)
       case call.name
-      when *Catalog::CALLBACKS then registration_scopes(namespace, call, source, "callback")
-      when :validate then registration_scopes(namespace, call, source, "validation")
+      when *Catalog::CALLBACKS then registration_scopes(namespace, call, source, "callback", modules)
+      when :validate then registration_scopes(namespace, call, source, "validation", modules)
       when :transaction then [ block_scope(namespace, call, source, :transaction, transaction_label(call)) ]
       when *LOCK_BLOCKS then [ block_scope(namespace, call, source, :lock, "a `#{call.name}` block") ]
       else []
       end
     end
 
-    def registration_scopes(namespace, call, source, noun)
+    def registration_scopes(namespace, call, source, noun, modules)
       return [] unless call.receiver.nil?
 
       scopes = NodeHelpers.symbol_arguments(call).filter_map do |method_name|
-        entry = @index.lookup(namespace, method_name) || @index.unique(method_name)
+        entry = @index.lookup(namespace, method_name)
+        entry ||= @index.unique(method_name) if modules.include?(namespace)
         next unless entry&.node&.body
 
         TransactionScope.new(

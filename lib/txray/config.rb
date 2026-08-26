@@ -36,8 +36,10 @@ module Txray
     end
 
     def self.load(path = nil)
+      raise Error, "no such config file: #{path}" if path && !File.exist?(path)
+
       path ||= discover
-      data = path && File.exist?(path) ? YAML.safe_load_file(path) : {}
+      data = path ? YAML.safe_load_file(path) : {}
       new(data.is_a?(Hash) ? data : {})
     end
 
