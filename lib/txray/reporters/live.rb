@@ -10,10 +10,11 @@ module Txray
       HIDE_CURSOR = "\e[?25l"
       SHOW_CURSOR = "\e[?25h"
 
-      def initialize(path:, io: $stdout, threshold_ms: 250)
+      def initialize(path:, io: $stdout, threshold_ms: 250, color: Reporters.color?(io))
         @io = io
         @path = path
         @threshold_ms = threshold_ms
+        @color = color
         @width = 100
         @height = 40
       end
@@ -229,6 +230,8 @@ module Txray
 
       def bar(left, right)
         padding = [ @width - visible(left) - visible(right) - 1, 1 ].max
+        return "#{left}#{" " * padding}#{right} " unless @color
+
         "\e[7m#{left}#{" " * padding}#{right} \e[0m"
       end
 
@@ -257,8 +260,8 @@ module Txray
         format("%02d:%02d:%02d", seconds / 3600, (seconds % 3600) / 60, seconds % 60)
       end
 
-      def paint(text, color) = "\e[#{color}m#{text}\e[0m"
-      def dim(text) = "\e[2m#{text}\e[0m"
+      def paint(text, color) = @color ? "\e[#{color}m#{text}\e[0m" : text
+      def dim(text) = @color ? "\e[2m#{text}\e[0m" : text
     end
   end
 end

@@ -8,6 +8,10 @@ require_relative "reporters/live"
 
 module Txray
   module Reporters
+    def self.color?(io)
+      ENV["NO_COLOR"].to_s.empty? && io.respond_to?(:tty?) && io.tty?
+    end
+
     FORMATS = { "text" => Text, "json" => Json, "sarif" => Sarif, "github" => Github }.freeze
 
     def self.build(format, io: $stdout)
