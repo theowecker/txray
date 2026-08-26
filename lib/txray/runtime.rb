@@ -104,10 +104,14 @@ module Txray
 
       def app_backtrace
         root = defined?(Rails) && Rails.root ? Rails.root.to_s : Dir.pwd
-        frames = caller.reject { |line| line.start_with?(GEM_ROOT) }
+        frames = caller.reject { |line| vendored?(line) }
         own = frames.select { |line| line.start_with?(root) }
-        own = frames.reject { |line| line.include?("/gems/") || line.start_with?(RbConfig::CONFIG["libdir"]) } if own.empty?
+        own = frames if own.empty?
         own.map { |line| line.delete_prefix("#{root}/") }.first(5)
+      end
+
+      def vendored?(line)
+        line.start_with?(GEM_ROOT, RbConfig::CONFIG["libdir"]) || line.include?("/gems/")
       end
 
       def subscribe(event, &block)

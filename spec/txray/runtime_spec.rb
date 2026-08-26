@@ -37,6 +37,7 @@ RSpec.describe Txray::Runtime do
     expect(transaction[:duration_ms]).to be >= 40
     expect(transaction[:outcome]).to eq("commit")
     expect(transaction[:source]).to include("runtime_spec.rb")
+    expect(transaction[:source]).not_to include("activerecord")
   end
 
   it "stays quiet for fast transactions" do
