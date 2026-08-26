@@ -19,11 +19,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.4"
-          bundler-cache: true
-
       - id: version
         name: Release only when the version has no tag yet
         run: |
@@ -36,6 +31,12 @@ jobs:
             echo "txray ${version} has no tag yet, releasing"
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - uses: ruby/setup-ruby@v1
+        if: steps.version.outputs.publish == 'true'
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
 
       - name: Take the release notes from the changelog
         if: steps.version.outputs.publish == 'true'
