@@ -23,7 +23,7 @@ Gem::Specification.new do |spec|
   gemspec = File.basename(__FILE__)
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).reject do |f|
-      (f == gemspec) || f.start_with?(*%w[bin/ spec/ .github/ .rubocop.yml .gitignore Gemfile])
+      (f == gemspec) || f.start_with?(*%w[bin/ spec/ .github/ .rubocop.yml .rspec .gitignore Gemfile])
     end
   end
   spec.bindir = "exe"
