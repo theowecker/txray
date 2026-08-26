@@ -7,7 +7,7 @@ module Txray
     FILENAME = ".txray.yml"
 
     DEFAULTS = {
-      "include" => %w[app lib],
+      "include" => [ "app", "lib", "db/migrate" ],
       "exclude" => %w[spec test vendor node_modules tmp log .git],
       "max_depth" => 3,
       "fail_level" => "low",

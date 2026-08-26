@@ -5,7 +5,7 @@ require "tmpdir"
 RSpec.describe Txray::Config do
   it "falls back to defaults" do
     config = described_class.new
-    expect(config.includes).to eq(%w[app lib])
+    expect(config.includes).to eq([ "app", "lib", "db/migrate" ])
     expect(config.max_depth).to eq(3)
     expect(config.fail_level).to eq(:low)
   end

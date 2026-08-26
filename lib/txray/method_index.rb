@@ -25,6 +25,11 @@ module Txray
       end
     end
 
+    def unique(name)
+      matches = @instance.each_value.filter_map { |methods| methods[name] }
+      matches.first if matches.size == 1
+    end
+
     def lookup(namespace, name, singleton: false, depth: 0)
       return nil if namespace.nil? || namespace.empty? || depth > MAX_RESOLUTION_DEPTH
 

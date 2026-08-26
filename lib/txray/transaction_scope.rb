@@ -6,18 +6,24 @@ module Txray
   end
 
   class ScopeFinder
+    LOCK_BLOCKS = %i[with_lock with_advisory_lock].freeze
+
     def initialize(index)
       @index = index
     end
 
     def call(source)
+      migrations = Set.new
       scopes = []
+
       Namespaces.each(source.root) do |namespace, node|
         case node
+        when Prism::ClassNode then migrations << namespace if transactional_migration?(node)
         when Prism::CallNode then scopes.concat(from_call(namespace, node, source))
-        when Prism::DefNode then scopes.concat(from_definition(namespace, node, source))
+        when Prism::DefNode then scopes.concat(from_definition(namespace, node, source, migrations))
         end
       end
+
       scopes.compact
     end
 
@@ -25,23 +31,24 @@ module Txray
 
     def from_call(namespace, call, source)
       case call.name
-      when *Catalog::CALLBACKS then callback_scopes(namespace, call, source)
+      when *Catalog::CALLBACKS then registration_scopes(namespace, call, source, "callback")
+      when :validate then registration_scopes(namespace, call, source, "validation")
       when :transaction then [ block_scope(namespace, call, source, :transaction, transaction_label(call)) ]
-      when :with_lock then [ block_scope(namespace, call, source, :lock, "a `with_lock` block") ]
+      when *LOCK_BLOCKS then [ block_scope(namespace, call, source, :lock, "a `#{call.name}` block") ]
       else []
       end
     end
 
-    def callback_scopes(namespace, call, source)
+    def registration_scopes(namespace, call, source, noun)
       return [] unless call.receiver.nil?
 
       scopes = NodeHelpers.symbol_arguments(call).filter_map do |method_name|
-        entry = @index.lookup(namespace, method_name)
+        entry = @index.lookup(namespace, method_name) || @index.unique(method_name)
         next unless entry&.node&.body
 
         TransactionScope.new(
           kind: :callback,
-          label: "the `#{call.name} :#{method_name}` callback",
+          label: "the `#{call.name} :#{method_name}` #{noun}",
           body: entry.node.body,
           namespace: entry.namespace,
           source: entry.source,
@@ -49,7 +56,7 @@ module Txray
         )
       end
 
-      scopes << block_scope(namespace, call, source, :callback, "the `#{call.name}` callback block")
+      scopes << block_scope(namespace, call, source, :callback, "the `#{call.name}` #{noun} block")
       scopes
     end
 
@@ -72,17 +79,37 @@ module Txray
       receiver ? "the `#{receiver}.transaction` block" : "an explicit `transaction` block"
     end
 
-    def from_definition(namespace, node, source)
-      return [] unless node.body && locks_row?(node.body)
+    def from_definition(namespace, node, source, migrations)
+      return [] if node.body.nil?
 
-      [ TransactionScope.new(
-        kind: :lock,
-        label: "`#{namespace}##{node.name}`, which locks a row",
+      if migrations.include?(namespace) && Catalog::MIGRATION_METHODS.include?(node.name)
+        return [ scope_for(:migration, "`#{namespace}##{node.name}`, which runs in a DDL transaction", node,
+                           namespace, source) ]
+      end
+
+      return [] unless locks_row?(node.body)
+
+      [ scope_for(:lock, "`#{namespace}##{node.name}`, which locks a row", node, namespace, source) ]
+    end
+
+    def scope_for(kind, label, node, namespace, source)
+      TransactionScope.new(
+        kind: kind,
+        label: label,
         body: node.body,
         namespace: namespace,
         source: source,
         line: node.location.start_line
-      ) ]
+      )
+    end
+
+    def transactional_migration?(node)
+      return false unless node.superclass&.slice.to_s.include?("ActiveRecord::Migration")
+
+      NodeHelpers.each_node(node.body) do |child|
+        return false if child.is_a?(Prism::CallNode) && child.name == :disable_ddl_transaction!
+      end
+      true
     end
 
     def locks_row?(body)

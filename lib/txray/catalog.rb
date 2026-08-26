@@ -45,7 +45,16 @@ module Txray
       find find_by find_by! where pluck exists? reload lock! first last count
     ].freeze
 
+    MEDIA_NAMESPACES = %w[
+      CSV Tempfile Zip Rubyzip Prawn WickedPdf Grover Ferrum Roo Axlsx Caxlsx Spreadsheet
+      MiniMagick ImageProcessing Vips Magick RMagick FFMPEG Streamio Shrine
+    ].freeze
+
+    FILE_NAMESPACES = %w[File IO Pathname FileUtils].freeze
+    FILE_METHODS = %i[read write open binread binwrite readlines foreach copy_stream cp mv rm_rf].freeze
+
     CALLBACKS = %i[
+      before_commit
       before_validation after_validation
       before_save around_save after_save
       before_create around_create after_create
@@ -53,6 +62,8 @@ module Txray
       before_destroy around_destroy after_destroy
       after_touch
     ].freeze
+
+    MIGRATION_METHODS = %i[change up down].freeze
 
     module_function
 

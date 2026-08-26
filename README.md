@@ -37,10 +37,14 @@ txray does not only look for `transaction do`. It treats all of these as transac
 | Scope | Example |
 | --- | --- |
 | Explicit blocks | `Order.transaction { ... }`, `ActiveRecord::Base.transaction { ... }` |
-| Row locks | `order.with_lock { ... }`, any method that calls `lock!` |
-| Callbacks that run inside the save transaction | `before_save`, `after_create`, `around_update`, `after_destroy`, `after_touch` and friends |
+| Row and advisory locks | `order.with_lock { ... }`, `with_advisory_lock { ... }`, any method that calls `lock!` |
+| Callbacks that run inside the save transaction | `before_save`, `after_create`, `around_update`, `after_destroy`, `after_touch`, `before_commit` and friends |
+| Custom validations | `validate :vat_number_is_real`, `validate { ... }` |
+| Migrations | `change`, `up` and `down` in an `ActiveRecord::Migration`, unless it calls `disable_ddl_transaction!` |
 
 `after_commit`, `after_create_commit`, `after_rollback` and the rest of the commit callbacks run outside the transaction, so txray deliberately leaves them alone. That distinction is the whole point: moving a call from `after_create` to `after_commit` is usually the fix.
+
+The validation and migration scopes catch two things that are easy to forget. Validations run inside the transaction `save` opens, so an API call in a custom validator holds the connection exactly like one in `before_save`. And a migration body runs in a DDL transaction, so a data backfill that loops over a large table holds it for the length of the backfill.
 
 ## What it looks for
 
@@ -54,6 +58,7 @@ txray does not only look for `transaction do`. It treats all of these as transac
 | `job-enqueue-in-transaction` | medium |
 | `upload-in-transaction` | medium |
 | `iteration-in-transaction` | medium |
+| `blocking-io-in-transaction` | medium |
 | `cache-in-transaction` | low |
 
 `bundle exec txray --rules` prints the full list with the suggested fix for each.
@@ -93,6 +98,7 @@ bundle exec txray --init
 include:
   - app
   - lib
+  - db/migrate
 exclude:
   - spec
   - test

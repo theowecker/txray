@@ -78,6 +78,14 @@ module Txray
     )
 
     register(
+      id: "blocking-io-in-transaction",
+      category: :transaction,
+      severity: :medium,
+      message: "File or media work `%{snippet}` runs inside %{scope}",
+      remedy: "Parsing, rendering and image processing scale with input size. Do the work before opening the transaction."
+    )
+
+    register(
       id: "cache-in-transaction",
       category: :transaction,
       severity: :low,

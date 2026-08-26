@@ -20,6 +20,7 @@ module Txray
       return "mail-in-transaction" if Catalog::MAIL_METHODS.include?(name)
       return "job-enqueue-in-transaction" if enqueue?(name, constant)
       return "cache-in-transaction" if cache?(node, constant)
+      return "blocking-io-in-transaction" if blocking_io?(name, constant)
       return "external-service-in-transaction" if Catalog.namespaced?(constant, @clients)
       return "upload-in-transaction" if Catalog::ATTACHMENT_METHODS.include?(name)
 
@@ -59,6 +60,13 @@ module Txray
       return true if Catalog::ENQUEUE_METHODS.include?(name)
 
       name == :push && constant == "Sidekiq::Client"
+    end
+
+    def blocking_io?(name, constant)
+      return false if constant.nil?
+      return Catalog::FILE_METHODS.include?(name) if Catalog::FILE_NAMESPACES.include?(constant)
+
+      Catalog.namespaced?(constant, Catalog::MEDIA_NAMESPACES)
     end
 
     def cache?(node, constant)

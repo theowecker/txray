@@ -196,6 +196,21 @@ RSpec.describe "transaction scenarios" do
       expect(scenario(code).map(&:first)).to eq([ "external-service-in-transaction" ])
     end
 
+    it "resolves a concern callback whose method lives on the host class" do
+      code = <<~RUBY
+        module Syncable
+          extend ActiveSupport::Concern
+          included { after_save :push_remote }
+        end
+
+        class Order < ApplicationRecord
+          include Syncable
+          def push_remote = Faraday.put(url)
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "http-in-transaction", "the `after_save :push_remote` callback" ] ])
+    end
+
     it "resolves callbacks registered from a concern included block" do
       code = <<~RUBY
         module Syncable
@@ -262,6 +277,114 @@ RSpec.describe "transaction scenarios" do
       RUBY
       expect(analyze(code).first.trace).to be_empty
       expect(scenario(code).map(&:first)).to eq([ "external-service-in-transaction" ])
+    end
+  end
+
+  describe "validations and commit hooks that run inside the save transaction" do
+    it "flags a custom validation method" do
+      code = <<~RUBY
+        class Order < ApplicationRecord
+          validate :vat_number_is_real
+          def vat_number_is_real = Faraday.get(vies_url)
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "http-in-transaction", "the `validate :vat_number_is_real` validation" ] ])
+    end
+
+    it "flags a validation written as a block" do
+      code = <<~RUBY
+        class Order < ApplicationRecord
+          validate do
+            errors.add(:base, :unreachable) unless Faraday.get(url).success?
+          end
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "http-in-transaction", "the `validate` validation block" ] ])
+    end
+
+    it "flags before_commit, which still runs inside the transaction" do
+      code = <<~RUBY
+        class Order < ApplicationRecord
+          before_commit :sync
+          def sync = Faraday.post(url)
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "http-in-transaction", "the `before_commit :sync` callback" ] ])
+    end
+  end
+
+  describe "migrations" do
+    it "flags work inside a migration, which runs in a DDL transaction" do
+      code = <<~RUBY
+        class BackfillGeocodes < ActiveRecord::Migration[8.0]
+          def up
+            Address.find_each { |address| address.update!(geo: Faraday.get(url(address)).body) }
+          end
+        end
+      RUBY
+      expect(scenario(code).map(&:first))
+        .to contain_exactly("http-in-transaction", "iteration-in-transaction")
+      expect(analyze(code).first.scope.label).to eq("`BackfillGeocodes#up`, which runs in a DDL transaction")
+    end
+
+    it "stays quiet when the migration opts out of the transaction" do
+      code = <<~RUBY
+        class BackfillGeocodes < ActiveRecord::Migration[8.0]
+          disable_ddl_transaction!
+
+          def up
+            Address.find_each { |address| address.update!(geo: Faraday.get(url(address)).body) }
+          end
+        end
+      RUBY
+      expect(analyze(code)).to be_empty
+    end
+  end
+
+  describe "blocking local work" do
+    it "flags image processing in a callback" do
+      code = <<~RUBY
+        class Photo < ApplicationRecord
+          after_save :build_thumb
+          def build_thumb = ImageProcessing::Vips.source(file).resize_to_limit(200, 200).call
+        end
+      RUBY
+      expect(scenario(code).map(&:first)).to eq([ "blocking-io-in-transaction" ])
+    end
+
+    it "flags csv parsing in a transaction" do
+      code = <<~RUBY
+        class Import
+          def call
+            ApplicationRecord.transaction { CSV.foreach(path) { |row| Order.create!(row) } }
+          end
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "blocking-io-in-transaction", "the `ApplicationRecord.transaction` block" ] ])
+    end
+
+    it "ignores cheap path helpers" do
+      code = <<~RUBY
+        class Order < ApplicationRecord
+          def settle
+            transaction { update!(receipt: File.join(root, "receipt.pdf")) }
+          end
+        end
+      RUBY
+      expect(analyze(code)).to be_empty
+    end
+  end
+
+  describe "advisory locks" do
+    it "flags work inside a with_advisory_lock block" do
+      code = <<~RUBY
+        class Order < ApplicationRecord
+          def settle
+            Order.with_advisory_lock("settle") { Stripe::Refund.create(id) }
+          end
+        end
+      RUBY
+      expect(scenario(code)).to eq([ [ "external-service-in-transaction", "a `with_advisory_lock` block" ] ])
     end
   end
 
